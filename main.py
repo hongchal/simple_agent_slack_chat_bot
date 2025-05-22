@@ -8,6 +8,9 @@ from langchain_openai import ChatOpenAI
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import PromptTemplate
 import time
+import pandas as pd
+import io
+from datetime import datetime
 
 from agent import graph as simple_agent
 from langchain_core.messages import HumanMessage
@@ -21,6 +24,71 @@ app = App(token=os.getenv("SLACK_BOT_TOKEN"))
 
 user_cache = {"users": None, "timestamp": 0}
 CACHE_TTL = 60 * 10  # 10분
+
+@app.event("app_home_opened")
+def update_home_tab(client, event, logger):
+  try:
+    client.views_publish(
+      user_id=event["user"],
+      view={
+        "type": "home",
+        "callback_id": "home_view",
+ 
+        # body of the view
+        "blocks": [
+          {
+            "type": "section",
+            "text": {
+              "type": "mrkdwn",
+              "text": "*Welcome to hpt(hanpoom ai agent) Home_* :tada:"
+            }
+          },
+          {
+            "type": "divider"
+          },
+          {
+            "type": "section",
+            "text": {
+              "type": "mrkdwn",
+              "text": "*현재 사용 가능한 기능: *"
+            }
+          },
+          {
+            "type": "section",
+            "text": {
+              "type": "mrkdwn",
+              "text": """ 
+              - 번역기(한글 -> 영어, 영어->한글) : /trans 를 입력하면 번역창이 뜹니다! \n
+- 특정 시점의 주문 목록 추출 : hpt와의 개인 대화에서 추출 가능합니다
+              """
+            }
+          },
+          {
+            "type": "divider"
+          },
+          {
+            "type": "section",
+            "text": {
+              "type": "mrkdwn",
+              "text": "*Currently available features: *"
+            }
+          },
+          {
+            "type": "section",
+            "text": {
+              "type": "mrkdwn",
+              "text": """
+              - Translator (Korean → English, English → Korean): Type /trans to open the translation window! \n
+- Extracting order list at a specific time: Available via private chat with hpt
+              """
+            }
+          }
+        ]
+      }
+    )
+  
+  except Exception as e:
+    logger.error(f"Error publishing home tab: {e}")
 
 def get_user_map(client):
     now = time.time()
@@ -106,20 +174,53 @@ def view_submit_trans(body, ack, client):
     )
 
 @app.message()
-def message_reaction(message, say, ack):
+def message_reaction(message, say, ack, client):
     ack()
     query = message['text']
+    print(query)
 
     config = {
         'configurable': {
             'thread_id': message['user']
         }
     }
-    for chunk in simple_agent.stream({'messages': [HumanMessage(query)], 'summary': ''}, stream_mode='values', config=config):
-        print(chunk['messages'][-1].pretty_print())
-        res_msg = chunk['messages'][-1]
 
-    say(str(res_msg.content))
+    file_path = None 
+
+    for chunk in simple_agent.stream({'messages': [HumanMessage(query)], 'summary': ''}, stream_mode='values', config=config):
+        # chunk['messages'][-1].pretty_print()
+        for msg in chunk['messages']:
+            # Tool Message에서 파일 경로 추출
+            if getattr(msg, "type", None) == "tool" or getattr(msg, "role", None) == "tool":
+                try:
+                    tool_content = msg.content
+                    if isinstance(tool_content, str) and "file_path" in tool_content:
+                        file_info = json.loads(tool_content)
+                        file_path = file_info.get("file_path")
+                except Exception as e:
+                    print(f"Tool message 파싱 오류: {e}")
+            # 마지막 AI 메시지 저장
+            if getattr(msg, "type", None) == "ai" or getattr(msg, "role", None) == "assistant":
+                last_ai_content = msg.content
+
+    # 1. 파일 경로가 포함되어 있는지 확인
+    content = str(last_ai_content)
+    print(content)
+
+    if file_path and os.path.exists(file_path):
+        client.files_upload_v2(
+            channel=message['channel'],
+            file=file_path,
+            title="Order Data",
+            filename=os.path.basename(file_path)
+        )
+        say("엑셀 파일을 업로드했습니다.")
+    else:
+        # 파일 경로가 없으면 마지막 AI 메시지 출력
+        say(str(last_ai_content) if last_ai_content else "결과가 없습니다.")
+
+
+
 
 if __name__ == "__main__":
     handler = SocketModeHandler(app, os.getenv("SLACK_APP_TOKEN"))
