@@ -8,9 +8,6 @@ from langchain_openai import ChatOpenAI
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import PromptTemplate
 import time
-import pandas as pd
-import io
-from datetime import datetime
 
 from agent import graph as simple_agent
 from langchain_core.messages import HumanMessage
