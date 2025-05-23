@@ -173,51 +173,59 @@ def view_submit_trans(body, ack, client):
 @app.message()
 def message_reaction(message, say, ack, client):
     ack()
-    query = message['text']
-    print(query)
+    try:
+        query = message['text']
+        print(query)
 
-    config = {
-        'configurable': {
-            'thread_id': message['user']
+        config = {
+            'configurable': {
+                'thread_id': message['user']
+            }
         }
-    }
 
-    file_path = None 
+        file_path = None 
 
-    for chunk in simple_agent.stream({'messages': [HumanMessage(query)], 'summary': ''}, stream_mode='values', config=config):
-        # chunk['messages'][-1].pretty_print()
-        for msg in chunk['messages']:
-            # Tool Message에서 파일 경로 추출
-            if getattr(msg, "type", None) == "tool" or getattr(msg, "role", None) == "tool":
-                try:
-                    tool_content = msg.content
-                    if isinstance(tool_content, str) and "file_path" in tool_content:
-                        file_info = json.loads(tool_content)
-                        file_path = file_info.get("file_path")
-                except Exception as e:
-                    print(f"Tool message 파싱 오류: {e}")
-            # 마지막 AI 메시지 저장
-            if getattr(msg, "type", None) == "ai" or getattr(msg, "role", None) == "assistant":
-                last_ai_content = msg.content
+        for chunk in simple_agent.stream({'messages': [HumanMessage(query)], 'summary': ''}, stream_mode='values', config=config):
+            chunk['messages'][-1].pretty_print()
+            for msg in chunk['messages']:
+                # Tool Message에서 파일 경로 추출
+                msg_type = getattr(msg, "type", None)
+                print(msg_type)
+                if msg_type == "tool":
+                    print("*"*100)
+                    print(msg)
+                    print("*"*100)
 
-    # 1. 파일 경로가 포함되어 있는지 확인
-    content = str(last_ai_content)
-    print(content)
+                    try:
+                        tool_content = msg.content
+                        if isinstance(tool_content, str) and "file_path" in tool_content:
+                            file_info = json.loads(tool_content)
+                            file_path = file_info.get("file_path")
+                    except Exception as e:
+                        print(f"Tool message 파싱 오류: {e}")
+                # 마지막 AI 메시지 저장
+                if getattr(msg, "type", None) == "ai" or getattr(msg, "role", None) == "assistant":
+                    last_ai_content = msg.content
 
-    if file_path and os.path.exists(file_path):
-        client.files_upload_v2(
-            channel=message['channel'],
-            file=file_path,
-            title="Order Data",
-            filename=os.path.basename(file_path)
-        )
-        say("엑셀 파일을 업로드했습니다.")
-    else:
-        # 파일 경로가 없으면 마지막 AI 메시지 출력
-        say(str(last_ai_content) if last_ai_content else "결과가 없습니다.")
+        # 1. 파일 경로가 포함되어 있는지 확인
+        content = str(last_ai_content)
+        print(content)
 
-
-
+        if file_path and os.path.exists(file_path):
+            client.files_upload_v2(
+                channel=message['channel'],
+                file=file_path,
+                title="Order Data",
+                filename=os.path.basename(file_path)
+            )
+            os.remove(file_path)
+            say("엑셀 파일을 업로드했습니다.")
+        else:
+            # 파일 경로가 없으면 마지막 AI 메시지 출력
+            say(str(last_ai_content) if last_ai_content else "결과가 없습니다.")
+        
+    except Exception as e:
+        say(f"Error: {e}")
 
 if __name__ == "__main__":
     handler = SocketModeHandler(app, os.getenv("SLACK_APP_TOKEN"))

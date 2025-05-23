@@ -17,11 +17,17 @@ llm = ChatOpenAI(model="gpt-4o")
 @tool
 def get_today_date() -> str:
     """Get today's date"""
+    print('_'*100)
+    print('get_today_date')
+    print('_'*100)
     return datetime.now().strftime("%Y-%m-%d")
 
 @tool
 def nl_to_order_sql(nl_query: str) -> str:
     """Convert a natural language query to an SQL query for the order DB."""
+    print('_'*100)
+    print('nl_to_order_sql')
+    print('_'*100)
 
     prompt = f"""
     You are an expert SQL developer.
