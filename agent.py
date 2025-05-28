@@ -1,4 +1,4 @@
-from tool import search_tool, get_data_from_db, get_today_date, nl_to_order_sql, nl_to_pre_shipped_sql
+from tool import search_tool, get_data_from_db, get_today_date, nl_to_order_sql, nl_to_pre_shipped_sql, nl_to_cm_sql
 from langgraph.prebuilt import ToolNode
 from langchain_openai import ChatOpenAI
 from langgraph.graph import MessagesState, StateGraph
@@ -14,7 +14,7 @@ class AgentState(MessagesState):
 llm = ChatOpenAI(model="gpt-4o")
 small_llm = ChatOpenAI(model="gpt-4o-mini")
 
-tool_list = [search_tool, get_data_from_db,get_today_date, nl_to_order_sql, nl_to_pre_shipped_sql]
+tool_list = [search_tool, get_data_from_db,get_today_date, nl_to_order_sql, nl_to_pre_shipped_sql, nl_to_cm_sql]
 llm_with_tools = llm.bind_tools(tool_list)
 tool_node = ToolNode(tool_list)
 

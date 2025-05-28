@@ -8,6 +8,7 @@ from langchain_openai import ChatOpenAI
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import PromptTemplate
 import time
+from datetime import datetime
 
 from agent import graph as simple_agent
 from langchain_core.messages import HumanMessage,AIMessage, RemoveMessage
@@ -188,23 +189,54 @@ def view_submit_trans(body, ack, client):
         text=response
     )
 
+def send_monitoring_notification(client, user_name, user_id, channel_name, timestamp, query, response):
+    """모니터링 채널에 알림을 전송하는 헬퍼 함수"""
+    try:
+        notification_text = f"""
+📝 **새로운 질문 알림**
+👤 사용자: {user_name} ({user_id})
+📍 채널: #{channel_name}
+🕐 시간: {timestamp}
+❓ 질문: {query}
+💬 응답: {response}
+"""
+        client.chat_postMessage(
+            channel=os.getenv("MONITORING_CHANNEL"),
+            text=notification_text,
+        )
+    except Exception as monitor_error:
+        print(f"모니터링 채널 알림 전송 실패: {monitor_error}")
+
 @app.message()
 def message_reaction(message, say, ack, client):
     ack()
     try:
         query = message['text']
-        print(query)
-
         config = {
             'configurable': {
                 'thread_id': message['user']
             }
         }
 
+        user_info = client.users_info(user=message['user'])
+        user_name = user_info['user']['real_name'] if user_info['ok'] else message['user']
+        channel_info = client.conversations_info(channel=message['channel'])
         try:
+          channel_name = channel_info['channel']['name'] if channel_info['ok'] else message['channel']
+        except:
+          channel_name = channel_info['channel']['id'] if channel_info['ok'] else message['channel']
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+  
+        try:
+            say("질문을 처리중입니다...")
             result = simple_agent.invoke({'messages': [HumanMessage(query)], 'summary': ''}, config=config)
         except Exception as e:
             say("에러로 인해서 대화를 초기화합니다" + f" Error: {e}")
+            
+            response = "에러로 인해서 대화를 초기화합니다" + f" Error: {e}"
+            send_monitoring_notification(client, user_name, message['user'], channel_name, timestamp, query, response)
+
             simple_agent.update_state(
                 config, 
                 values={'messages': [AIMessage(content="Previous history cleared due to an error."), RemoveMessage(id=REMOVE_ALL_MESSAGES)]},
@@ -229,19 +261,31 @@ def message_reaction(message, say, ack, client):
             if msg_type == "ai" or getattr(msg, "role", None) == "assistant":
                 last_ai_content = msg.content
 
-        
         if file_path and os.path.exists(file_path):
+            say("엑셀 파일을 업로드했습니다.")
             client.files_upload_v2(
                 channel=message['channel'],
                 file=file_path,
-                title="Order Data",
+                title="request result",
                 filename=os.path.basename(file_path)
             )
+
+            response = "엑셀 파일을 업로드했습니다."
+            send_monitoring_notification(client, user_name, message['user'], channel_name, timestamp, query, response)
+            client.files_upload_v2(
+                channel=os.getenv("MONITORING_CHANNEL"),
+                file=file_path,
+                title=f"request result from {user_name}-{timestamp}",
+                filename=os.path.basename(file_path)
+            )
+            
             os.remove(file_path)
-            say("엑셀 파일을 업로드했습니다.")
         else:
             # 파일 경로가 없으면 마지막 AI 메시지 출력
+            response = str(last_ai_content) if last_ai_content else "결과가 없습니다."
             say(str(last_ai_content) if last_ai_content else "결과가 없습니다.")
+            
+            send_monitoring_notification(client, user_name, message['user'], channel_name, timestamp, query, response)
         
     except Exception as e:
         say(f"Error: {e}")

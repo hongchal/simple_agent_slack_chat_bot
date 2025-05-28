@@ -8,6 +8,7 @@ from datetime import datetime
 from langchain_openai import ChatOpenAI
 from sql.order_sql import order_sql_query
 from sql.pre_shippped import pre_shipped_sql_query
+from sql.cm_sql import cm_sql_query
 from typing import Dict
 
 load_dotenv()
@@ -51,13 +52,23 @@ def nl_to_pre_shipped_sql(nl_query: str) -> str:
 
     return sql_query
 
+@tool
+def nl_to_cm_sql(nl_query: str) -> str:
+    """Convert a natural language query to an SQL query for the cm(contribution margin) DB."""
+    prompt = f"""
+    You are an expert SQL developer.
+    Convert the following natural language request into a valid SQL query for our cm(ontribution margin) database.
+
+    cm_sql_query = f'{cm_sql_query}'
+    Natural language: {nl_query}
+    """
+
+    sql_query = llm.invoke(prompt)
+    return sql_query
 
 @tool
 def get_data_from_db(query: str) -> Dict[str, str]:
     """Get data from the database and save as CSV file."""
-    print('_'*100)
-    print(query)
-    print('_'*100)
 
     remote = pymysql.connect(
         host=os.getenv("DATABASE_HOST"),
@@ -83,5 +94,3 @@ def get_data_from_db(query: str) -> Dict[str, str]:
 
     return {"file_path": path}
 
-
-    
