@@ -7,6 +7,7 @@ import os
 from datetime import datetime
 from langchain_openai import ChatOpenAI
 from sql.order_sql import order_sql_query
+from sql.pre_shippped import pre_shipped_sql_query
 from typing import Dict
 
 load_dotenv()
@@ -17,17 +18,11 @@ llm = ChatOpenAI(model="gpt-4o")
 @tool
 def get_today_date() -> str:
     """Get today's date"""
-    print('_'*100)
-    print('get_today_date')
-    print('_'*100)
     return datetime.now().strftime("%Y-%m-%d")
 
 @tool
 def nl_to_order_sql(nl_query: str) -> str:
     """Convert a natural language query to an SQL query for the order DB."""
-    print('_'*100)
-    print('nl_to_order_sql')
-    print('_'*100)
 
     prompt = f"""
     You are an expert SQL developer.
@@ -42,8 +37,24 @@ def nl_to_order_sql(nl_query: str) -> str:
     return sql_query
 
 @tool
-def get_order_data(query: str) -> Dict[str, str]:
-    """Get order data from the database and save as CSV file."""
+def nl_to_pre_shipped_sql(nl_query: str) -> str:
+    """Convert a natural language query to an SQL query for the pre-shipped DB."""
+    prompt = f"""
+    You are an expert SQL developer.
+    Convert the following natural language request into a valid SQL query for our pre-shipped database.
+    
+    pre_shipped_sql_query = f'{pre_shipped_sql_query}'
+    Natural language: {nl_query}
+    """
+
+    sql_query = llm.invoke(prompt)
+
+    return sql_query
+
+
+@tool
+def get_data_from_db(query: str) -> Dict[str, str]:
+    """Get data from the database and save as CSV file."""
     print('_'*100)
     print(query)
     print('_'*100)

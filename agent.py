@@ -1,10 +1,12 @@
-from tool import search_tool, get_order_data, get_today_date, nl_to_order_sql
+from tool import search_tool, get_data_from_db, get_today_date, nl_to_order_sql, nl_to_pre_shipped_sql
 from langgraph.prebuilt import ToolNode
 from langchain_openai import ChatOpenAI
 from langgraph.graph import MessagesState, StateGraph
 from langchain_core.messages import SystemMessage
 from langgraph.graph import START, END
 from langgraph.checkpoint.memory import MemorySaver
+from langchain_core.messages import RemoveMessage
+from typing import Literal
 
 class AgentState(MessagesState):
     summary: str
@@ -12,7 +14,7 @@ class AgentState(MessagesState):
 llm = ChatOpenAI(model="gpt-4o")
 small_llm = ChatOpenAI(model="gpt-4o-mini")
 
-tool_list = [search_tool, get_order_data,get_today_date, nl_to_order_sql]
+tool_list = [search_tool, get_data_from_db,get_today_date, nl_to_order_sql, nl_to_pre_shipped_sql]
 llm_with_tools = llm.bind_tools(tool_list)
 tool_node = ToolNode(tool_list)
 
@@ -51,7 +53,6 @@ summary:{summary}'''
     summary = small_llm.invoke(summary_prompt)
     return {'summary': summary.content}
 
-from langchain_core.messages import RemoveMessage
 
 def delete_messages(state: AgentState) -> AgentState:
     """
@@ -69,8 +70,6 @@ def delete_messages(state: AgentState) -> AgentState:
     delete_messages = [RemoveMessage(id=message.id) for message in messages[:-3]]
     # 삭제된 메시지를 포함하는 새로운 state를 반환합니다.
     return {'messages': delete_messages}
-
-from typing import Literal
 
 def should_continue(state: AgentState) -> Literal['tools', 'summarize_messages']:
     """

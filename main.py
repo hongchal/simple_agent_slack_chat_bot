@@ -10,7 +10,8 @@ from langchain_core.prompts import PromptTemplate
 import time
 
 from agent import graph as simple_agent
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import HumanMessage,AIMessage, RemoveMessage
+from langgraph.graph.message import REMOVE_ALL_MESSAGES
 
 
 load_dotenv() 
@@ -38,6 +39,23 @@ def update_home_tab(client, event, logger):
             "text": {
               "type": "mrkdwn",
               "text": "*Welcome to hpt(hanpoom ai agent) Home_* :tada:"
+            }
+          },
+          {
+            "type": "divider"
+          },
+          {
+            "type": "section",
+            "text": {
+              "type": "mrkdwn",
+              "text": "*현재 로컬 개발 중입니다. robert가 서버를 키지 않으면 답변이 생성되지 않습니다*"
+            }
+          },
+          {
+            "type": "section",
+            "text": {
+              "type": "mrkdwn",
+              "text": "*current status: local development, if robert is not running the server, the answer will not be generated*"
             }
           },
           {
@@ -183,34 +201,35 @@ def message_reaction(message, say, ack, client):
             }
         }
 
-        file_path = None 
+        try:
+            result = simple_agent.invoke({'messages': [HumanMessage(query)], 'summary': ''}, config=config)
+        except Exception as e:
+            say("에러로 인해서 대화를 초기화합니다" + f" Error: {e}")
+            simple_agent.update_state(
+                config, 
+                values={'messages': [AIMessage(content="Previous history cleared due to an error."), RemoveMessage(id=REMOVE_ALL_MESSAGES)]},
+            )
+                        
+            result = simple_agent.invoke({'messages': [HumanMessage(query)], 'summary': ''}, config=config)
+            
+        messages = result['messages']
+        last_ai_content = None
+        file_path = None
 
-        for chunk in simple_agent.stream({'messages': [HumanMessage(query)], 'summary': ''}, stream_mode='values', config=config):
-            chunk['messages'][-1].pretty_print()
-            for msg in chunk['messages']:
-                # Tool Message에서 파일 경로 추출
-                msg_type = getattr(msg, "type", None)
-                print(msg_type)
-                if msg_type == "tool":
-                    print("*"*100)
-                    print(msg)
-                    print("*"*100)
+        for msg in messages:
+            msg_type = getattr(msg, "type", None)
+            if msg_type == "tool":
+                try:
+                    tool_content = msg.content
+                    if isinstance(tool_content, str) and "file_path" in tool_content:
+                        file_info = json.loads(tool_content)
+                        file_path = file_info.get("file_path")
+                except Exception as e:
+                    print(f"Tool message 파싱 오류: {e}")
+            if msg_type == "ai" or getattr(msg, "role", None) == "assistant":
+                last_ai_content = msg.content
 
-                    try:
-                        tool_content = msg.content
-                        if isinstance(tool_content, str) and "file_path" in tool_content:
-                            file_info = json.loads(tool_content)
-                            file_path = file_info.get("file_path")
-                    except Exception as e:
-                        print(f"Tool message 파싱 오류: {e}")
-                # 마지막 AI 메시지 저장
-                if getattr(msg, "type", None) == "ai" or getattr(msg, "role", None) == "assistant":
-                    last_ai_content = msg.content
-
-        # 1. 파일 경로가 포함되어 있는지 확인
-        content = str(last_ai_content)
-        print(content)
-
+        
         if file_path and os.path.exists(file_path):
             client.files_upload_v2(
                 channel=message['channel'],
